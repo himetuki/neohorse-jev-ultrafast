@@ -1,6 +1,14 @@
-<img src="docs/banner.svg" alt="Jev Ultrafast · Browser Use × TypeSafe" width="100%" />
+<img src="docs/banner.svg" alt="Jev Ultrafast · NeoHorse × Jev-4B" width="100%" />
 
 # Jev Ultrafast ⚡
+
+> [!NOTE]
+> **NeoHorse-Jev-4B fork of [browser-use/jev-ultrafast](https://github.com/browser-use/jev-ultrafast).**
+> The decision model is replaced by NeoHorse-Jev-4B at `tokenrhythm.studio`, so this fork needs
+> no Browser Use Cloud account and no paid third-party decision service. It also ships as the
+> `neohorse-jev-browser-use` skill of the ZCode plugin of the same name. Upstream is MIT-licensed
+> and this fork keeps the same license. See
+> [NeoHorse-Jev-4B adaptation](#neohorse-jev-4b-adaptation) for the exact differences.
 
 > [!IMPORTANT]
 > **The Browser Use Cloud waitlist is open.** Get early access to ultrafast browser agents in the cloud.
@@ -8,7 +16,7 @@
 
 **A browser agent with a dynamic, indexed action space.**
 
-Give it one goal. [TypeSafe's Jev](https://docs.typesafe.ai/introduction) picks an operation and an element. A small LLM writes text only when the operation is `TYPE_TEXT`.
+Give it one goal. The [NeoHorse-Jev-4B](https://tokenrhythm.studio) decision model picks an operation and an element. A small LLM writes text only when the operation is `TYPE_TEXT`.
 
 **Zürich → London on Google Flights in 7.1 seconds.** One natural-language goal, actual text generation, and loading waits included.
 
@@ -50,6 +58,22 @@ Target questions are speculative. If the operation is `CLICK`, only `click_targe
 
 There are no site-specific action scripts or prepared field strings in the policy. The Flights example supplies a goal and independently verifies the outcome. The screenshot renderer adds labels afterward; it does not drive the browser.
 
+## NeoHorse-Jev-4B adaptation
+
+This copy posts decisions to `https://tokenrhythm.studio/v1/decision` with model
+`NeoHorse-Jev-4B` and the platform key in `NEO_HORSE_API_KEY`. It replaces the
+upstream TypeSafe endpoint. Only https requests to that host are allowed, and
+the host's resolved addresses are rejected if they fall into private, loopback,
+link-local or reserved ranges. The platform omits `confidence` on choice
+answers, so it is treated as optional. Keys are read from the environment only;
+never place them in prompts, request files, or tracked files.
+
+**Privacy:** the page URL, visible text and the indexed element table are sent
+to the decision endpoint on every cycle, and page text may go to the text
+helper. Get the user's consent before running the agent on pages with private
+or sensitive content, and never include credentials, cookies or tokens in the
+goal or evidence.
+
 ## Try it
 
 ```bash
@@ -57,7 +81,7 @@ git clone https://github.com/browser-use/jev-ultrafast.git
 cd jev-ultrafast
 uv sync
 cp .env.example .env
-# Add TYPESAFE_API_KEY and TEXT_MODEL_API_KEY.
+# Add NEO_HORSE_API_KEY and TEXT_MODEL_API_KEY.
 uv run jev
 ```
 
@@ -65,7 +89,7 @@ Open **http://127.0.0.1:8766** and click **Start demo → Run automatically**. T
 
 Chrome connects through [Browser Harness](https://github.com/browser-use/browser-harness), installed by `uv sync`. Run `uv run browser-harness --doctor` if it needs connecting. Allow remote debugging in Chrome when prompted.
 
-`TEXT_MODEL_API_KEY` is an OpenRouter key in the example configuration. The current demo uses `inception/mercury-2.5` with reasoning disabled. Gemini, GLM, and DeepSeek can also use the OpenAI-compatible text helper; configure the appropriate model, endpoint, and reasoning setting.
+`NEO_HORSE_API_KEY` is a tokenrhythm.studio platform key. `TEXT_MODEL_API_KEY` is an OpenRouter key in the example configuration. The current demo uses `inception/mercury-2.5` with reasoning disabled. Gemini, GLM, and DeepSeek can also use the OpenAI-compatible text helper; configure the appropriate model, endpoint, and reasoning setting.
 
 ## Use the library
 
@@ -139,4 +163,4 @@ Tests are offline. `uv run python scripts/check_guards.py` checks real controls 
 
 ---
 
-[Browser Use](https://github.com/browser-use/browser-use) · [Browser Harness](https://github.com/browser-use/browser-harness) · [TypeSafe speculative fan-out](https://docs.typesafe.ai/patterns/fan-out)
+[Browser Use](https://github.com/browser-use/browser-use) · [Browser Harness](https://github.com/browser-use/browser-harness) · NeoHorse-Jev-4B decision endpoint: `https://tokenrhythm.studio/v1/decision`

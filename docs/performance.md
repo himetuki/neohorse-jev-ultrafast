@@ -1,5 +1,10 @@
 # Faster on the real web
 
+> [!NOTE]
+> This page keeps the upstream measurements, which were made with TypeSafe `jev-1.13.0`
+> before the NeoHorse-Jev-4B adaptation. The numbers are historical evidence, not a claim
+> about this fork; the adapted decision endpoint has not been re-measured.
+
 The current video completes the Google Flights task in **7.073 seconds at 1×**. It starts with one natural-language goal and uses dynamic controls throughout. Jev selects operation + target in one request; Mercury generates the city strings when TYPE_TEXT is selected.
 
 [Video](demo.mp4) · [Recording measurements](flights-measurement.json) · [Matched run measurements](full-speed-measurement.json)

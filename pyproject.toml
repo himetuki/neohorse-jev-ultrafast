@@ -1,7 +1,7 @@
 [project]
 name = "jev-ultrafast"
 version = "0.1.0"
-description = "A browser agent that chooses instead of generating."
+description = "A browser agent that chooses instead of generating (NeoHorse-Jev-4B decision fork of browser-use/jev-ultrafast)."
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.12"

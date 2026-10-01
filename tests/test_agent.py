@@ -1,9 +1,11 @@
 """Offline contracts for a dynamic operation/target policy. No paid APIs."""
 
 import json
+import os
 import time
+import unittest
 from copy import deepcopy
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 import pytest
 
@@ -60,7 +62,7 @@ def test_invalid_choice_is_rejected(mutation):
         a["choice"] = "b"
     else:
         a["confidence"] = 5
-    with pytest.raises(ValueError, match="Invalid TypeSafe"):
+    with pytest.raises(ValueError, match="Invalid NeoHorse"):
         model.validate_choice(a, {"a", "b"})
 
 
@@ -77,7 +79,7 @@ def test_one_index_per_node_with_operation_specific_targets():
 def test_all_heads_are_one_request_and_only_matching_head_executes(monkeypatch):
     calls = []
 
-    def post(_url, _key, body):
+    def post(_url, _key, body, allowed_hosts=None):
         calls.append(body)
         return {
             "model": "test",
@@ -88,7 +90,7 @@ def test_all_heads_are_one_request_and_only_matching_head_executes(monkeypatch):
             },
         }
 
-    monkeypatch.setenv("TYPESAFE_API_KEY", "test")
+    monkeypatch.setenv("NEO_HORSE_API_KEY", "test")
     monkeypatch.setattr(model, "post_json", post)
     d = model.choose(page(), "Find a book", [])
     assert len(calls) == 1
@@ -97,7 +99,7 @@ def test_all_heads_are_one_request_and_only_matching_head_executes(monkeypatch):
 
 
 def test_click_cannot_consume_a_text_target(monkeypatch):
-    def post(_url, _key, body):
+    def post(_url, _key, body, allowed_hosts=None):
         return {
             "model": "test",
             "answers": {
@@ -107,9 +109,9 @@ def test_click_cannot_consume_a_text_target(monkeypatch):
             },
         }
 
-    monkeypatch.setenv("TYPESAFE_API_KEY", "test")
+    monkeypatch.setenv("NEO_HORSE_API_KEY", "test")
     monkeypatch.setattr(model, "post_json", post)
-    with pytest.raises(ValueError, match="Invalid TypeSafe"):
+    with pytest.raises(ValueError, match="Invalid NeoHorse"):
         model.choose(page(), "Find a book", [])
 
 
@@ -120,7 +122,7 @@ def test_target_head_receives_control_state_and_full_next_step_rules(monkeypatch
         "role": "checkbox", "checked": "true", "selected": False,
     })
 
-    def post(_url, _key, body):
+    def post(_url, _key, body, allowed_hosts=None):
         questions = body["questions"]
         target = questions["click_target"]
         assert target["criteria"]["1"]["checked"] == "true"
@@ -134,7 +136,7 @@ def test_target_head_receives_control_state_and_full_next_step_rules(monkeypatch
             },
         }
 
-    monkeypatch.setenv("TYPESAFE_API_KEY", "test")
+    monkeypatch.setenv("NEO_HORSE_API_KEY", "test")
     monkeypatch.setattr(model, "post_json", post)
     d = model.choose(p, "Search with free cancellation", [])
     assert d["choice"] == "e3"
@@ -318,3 +320,80 @@ def test_navigation_during_prediction_reobserves_without_action(runner):
     assert runner.state["status"] == "ready"
     assert runner.state["decision"] is None
     runner.state["browser"].act.assert_not_called()
+
+
+class NeoHorseTransportTests(unittest.TestCase):
+    """Endpoint allowlist, SSRF guard, and NeoHorse answer shapes. No network."""
+
+    def test_decision_endpoint_is_pinned(self):
+        self.assertEqual(model.DECISION_URL, "https://tokenrhythm.studio/v1/decision")
+        self.assertEqual(model.DECISION_MODEL, "NeoHorse-Jev-4B")
+        self.assertEqual(model.ALLOWED_HOSTS, {"tokenrhythm.studio"})
+
+    def test_guard_rejects_non_https_and_foreign_hosts(self):
+        for url in [
+            "http://tokenrhythm.studio/v1/decision",
+            "https://untrusted.example/",
+            "https://tokenrhythm.studio.evil.example/v1/decision",
+            "https://127.0.0.1/v1/decision",
+        ]:
+            with self.subTest(url=url), self.assertRaises(RuntimeError):
+                model.check_endpoint(url, model.ALLOWED_HOSTS)
+
+    def test_guard_rejects_private_resolution(self):
+        for address in ["127.0.0.1", "10.0.0.5", "192.168.1.10", "169.254.169.254", "::1", "fd00::1"]:
+            with self.subTest(address=address), \
+                    patch("jev_ultrafast.model.socket.getaddrinfo",
+                          return_value=[(2, 1, 6, "", (address, 443))]):
+                with self.assertRaisesRegex(RuntimeError, "blocked address"):
+                    model.check_endpoint(model.DECISION_URL, model.ALLOWED_HOSTS)
+
+    def test_guard_accepts_public_resolution(self):
+        with patch("jev_ultrafast.model.socket.getaddrinfo",
+                   return_value=[(2, 1, 6, "", ("93.184.216.34", 443))]):
+            model.check_endpoint(model.DECISION_URL, model.ALLOWED_HOSTS)
+
+    def test_post_json_validates_before_any_request(self):
+        with self.assertRaisesRegex(RuntimeError, "allowlist"), \
+                patch.object(model, "CLIENT") as client:
+            model.post_json("https://untrusted.example/", "secret-test", {}, allowed_hosts=model.ALLOWED_HOSTS)
+        client.post.assert_not_called()
+
+    def test_choice_without_confidence_is_accepted(self):
+        answer = {"choice": "a", "probabilities": {"a": 0.9, "b": 0.1}}
+        self.assertEqual(model.validate_choice(answer, {"a", "b"}), answer)
+
+    def test_present_confidence_is_still_validated(self):
+        answer = {"choice": "a", "confidence": 5, "probabilities": {"a": 0.9, "b": 0.1}}
+        with self.assertRaisesRegex(ValueError, "Invalid NeoHorse"):
+            model.validate_choice(answer, {"a", "b"})
+
+    def test_missing_decision_key_fails_before_network(self):
+        with patch.dict(os.environ, {}, clear=True), patch.object(model, "post_json") as post:
+            with self.assertRaisesRegex(RuntimeError, "NEO_HORSE_API_KEY"):
+                model.decision_key()
+            post.assert_not_called()
+
+    def test_choose_uses_fixed_model_and_token_usage_fallback(self):
+        def post(_url, key, body, allowed_hosts=None):
+            self.assertEqual(body["model"], model.DECISION_MODEL)
+            self.assertEqual(key, "test")
+            self.assertEqual(allowed_hosts, model.ALLOWED_HOSTS)
+            ids = list(body["questions"]["operation"]["criteria"])
+            probabilities = {i: 0.025 for i in ids}
+            probabilities["TYPE_TEXT"] = 0.9
+            return {
+                "model": "NeoHorse-Jev-4B",
+                "input_tokens": 149,
+                "answers": {
+                    "operation": {"choice": "TYPE_TEXT", "probabilities": probabilities},
+                    "type_text_target": {"choice": "1", "probabilities": {"1": 1.0}},
+                },
+            }
+
+        with patch.dict(os.environ, {"NEO_HORSE_API_KEY": "test"}), patch.object(model, "post_json", post):
+            decision = model.choose(page(), "Find a book", [])
+        self.assertEqual(decision["choice"], "e1")
+        self.assertEqual(decision["confidence"], None)
+        self.assertEqual(decision["usage"], {"input_tokens": 149})
+

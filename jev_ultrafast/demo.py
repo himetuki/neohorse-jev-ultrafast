@@ -13,7 +13,7 @@ from .agent import Agent
 from .questions import MAX_STEPS
 
 ROOT = Path(__file__).parent
-PORT = int(os.environ.get("TYPESAFE_DEMO_PORT", "8766"))
+PORT = int(os.environ.get("NEOHORSE_DEMO_PORT", "8766"))
 ORIGIN = f"http://127.0.0.1:{PORT}"
 TOKEN = secrets.token_urlsafe(32)
 LOCK = threading.Lock()

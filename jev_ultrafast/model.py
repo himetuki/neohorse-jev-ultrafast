@@ -1,9 +1,12 @@
-"""TypeSafe makes choices; an optional small OpenAI-compatible model writes field values."""
+"""NeoHorse-Jev-4B makes choices; an optional small OpenAI-compatible model writes field values."""
 
+import ipaddress
 import json
 import math
 import os
+import socket
 import time
+import urllib.parse
 
 import httpx
 
@@ -11,14 +14,56 @@ from .questions import NEXT_ACTION, TARGET, TEXT_VALUE
 
 CLIENT = httpx.Client(http2=True, timeout=25)
 
+DECISION_URL = "https://tokenrhythm.studio/v1/decision"
+DECISION_KEY_NAME = "NEO_HORSE_API_KEY"
+DECISION_MODEL = "NeoHorse-Jev-4B"
+ALLOWED_HOSTS = {"tokenrhythm.studio"}
 
-def post_json(url, key, body):
+
+def check_endpoint(url, allowed_hosts=None):
+    """Only https requests. The decision endpoint is pinned to a host allowlist;
+    a user-configured text endpoint additionally rejects any address that
+    resolves into a private, loopback, link-local or reserved range (SSRF
+    guard). Never logs credentials or endpoint bodies."""
+    parsed = urllib.parse.urlparse(url)
+    if parsed.scheme != "https":
+        raise RuntimeError("Model endpoints must use https.")
+    host = parsed.hostname
+    if not host:
+        raise RuntimeError("Model endpoint has no host.")
+    if allowed_hosts is not None and host not in allowed_hosts:
+        raise RuntimeError("Endpoint host is not in the documented allowlist.")
+    try:
+        infos = socket.getaddrinfo(host, None)
+    except socket.gaierror:
+        raise RuntimeError(f"Cannot resolve endpoint host {host!r}.") from None
+    for info in infos:
+        address = ipaddress.ip_address(info[4][0])
+        if (address.is_private or address.is_loopback or address.is_link_local
+                or address.is_reserved or address.is_multicast or address.is_unspecified):
+            raise RuntimeError(f"Endpoint host {host!r} resolves to a blocked address.")
+
+
+def decision_key():
+    key = os.environ.get(DECISION_KEY_NAME, "").strip()
+    if not key:
+        raise RuntimeError(
+            f"Set {DECISION_KEY_NAME} in the calling process environment; "
+            "configure it locally, never in chat or tracked files."
+        )
+    if any(ord(character) < 33 or ord(character) > 126 for character in key):
+        raise RuntimeError(f"{DECISION_KEY_NAME} contains invalid whitespace or non-ASCII characters")
+    return key
+
+
+def post_json(url, key, body, allowed_hosts=None):
+    check_endpoint(url, allowed_hosts)
     for attempt in range(3):
         try:
             response = CLIENT.post(url, json=body, headers={"Authorization": f"Bearer {key}"})
         except httpx.HTTPError:
             raise RuntimeError("Model connection failed; no action executed.") from None
-        if response.status_code in {429, 529, 503} and attempt < 2:
+        if response.status_code in {429, 502, 503, 504} and attempt < 2:
             time.sleep(0.5 * 2**attempt)
             continue
         if response.is_error:
@@ -30,7 +75,8 @@ def post_json(url, key, body):
 def validate_choice(answer, ids):
     try:
         probabilities = answer["probabilities"]
-        numbers = [*probabilities.values(), answer["confidence"]]
+        # NeoHorse-Jev-4B documents confidence as optional; when present it is validated.
+        numbers = [n for n in [*probabilities.values(), answer.get("confidence")] if n is not None]
         valid = (
             answer["choice"] in ids
             and set(probabilities) == set(ids)
@@ -41,7 +87,7 @@ def validate_choice(answer, ids):
     except (KeyError, TypeError, ValueError):
         valid = False
     if not valid:
-        raise ValueError("Invalid TypeSafe response; no action executed.")
+        raise ValueError("Invalid NeoHorse response; no action executed.")
     return answer
 
 
@@ -105,7 +151,7 @@ def choose(state, goal, history):
             "instructions": {"goal": goal, "operation": operation, "rules": [NEXT_ACTION, TARGET]},
         }
     body = {
-        "model": os.environ.get("TYPESAFE_MODEL", "jev-latest"),
+        "model": DECISION_MODEL,
         "state": {
             "page": {k: state[k] for k in ("url", "title", "text")},
             "elements": elements,
@@ -116,7 +162,7 @@ def choose(state, goal, history):
         "questions": questions,
     }
     started = time.perf_counter()
-    result = post_json("https://api.typesafe.ai/v1/systemone", os.environ["TYPESAFE_API_KEY"], body)
+    result = post_json(DECISION_URL, decision_key(), body, allowed_hosts=ALLOWED_HOSTS)
     operation_answer = validate_choice(result["answers"].get("operation", {}), operations)
     operation = operation_answer["choice"]
     target = None
@@ -135,14 +181,15 @@ def choose(state, goal, history):
         "choice": choice,
         "operation": operation,
         "target": target,
-        "confidence": operation_answer["confidence"],
+        "confidence": operation_answer.get("confidence"),
         "probabilities": probabilities,
         "operation_probabilities": operation_answer["probabilities"],
         "target_probabilities": target_answer["probabilities"] if target_answer else {},
-        "target_confidence": target_answer["confidence"] if target_answer else None,
+        "target_confidence": target_answer.get("confidence") if target_answer else None,
         "raw_answers": result["answers"],
         "model": result["model"],
-        "usage": result.get("usage", {}),
+        # /v1/decision reports input_tokens at the top level; older hosts nest usage.
+        "usage": result.get("usage") or {"input_tokens": result.get("input_tokens")},
         "latency_ms": round((time.perf_counter() - started) * 1000),
         "request": body,
     }
@@ -178,8 +225,7 @@ def field_text(context):
             "messages": [
                 {"role": "system", "content": TEXT_VALUE},
                 {
-                    "role": "user",
-                    "content": json.dumps(context),
+                    "role": "user", "content": json.dumps(context),
                 },
             ],
         },

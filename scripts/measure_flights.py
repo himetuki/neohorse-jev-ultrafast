@@ -59,9 +59,13 @@ finally:
     state["cdp"] = measured_calls
     state["source_hashes"] = source_hashes
     state["task_hash"] = hashlib.sha256(json.dumps([URL, GOALS]).encode()).hexdigest()
+    from jev_ultrafast.model import DECISION_MODEL  # noqa: E402
     state["configuration"] = {
-        key: os.environ.get(key)
-        for key in ("TYPESAFE_MODEL", "TEXT_MODEL", "TEXT_MODEL_BASE_URL", "TEXT_MODEL_REASONING")
+        "decision_model": DECISION_MODEL,
+        **{
+            key: os.environ.get(key)
+            for key in ("TEXT_MODEL", "TEXT_MODEL_BASE_URL", "TEXT_MODEL_REASONING")
+        },
     }
     state["browser_version"] = agent.browser.call("Browser.getVersion")["product"]
     state["final_page"] = final

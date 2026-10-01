@@ -1,4 +1,4 @@
-"""Live Google Flights search. Calls TypeSafe; never selects or books a flight."""
+"""Live Google Flights search. Calls NeoHorse-Jev-4B; never selects or books a flight."""
 
 import argparse
 import base64

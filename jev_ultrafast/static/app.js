@@ -229,7 +229,7 @@ $("download").addEventListener("click", () => {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = "typesafe-browser-trace.json";
+  a.download = "neohorse-browser-trace.json";
   a.click();
   URL.revokeObjectURL(url);
 });
