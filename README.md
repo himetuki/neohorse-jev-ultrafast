@@ -18,11 +18,10 @@
 
 Give it one goal. The [NeoHorse-Jev-4B](https://tokenrhythm.studio) decision model picks an operation and an element. A small LLM writes text only when the operation is `TYPE_TEXT`.
 
-**Zürich → London on Google Flights in 7.1 seconds.** One natural-language goal, actual text generation, and loading waits included.
-
-<a href="docs/demo.mp4"><img src="docs/demo.gif" alt="A real Google Flights search at 1× speed, with generated city names and dynamic operation/target decisions" width="100%" /></a>
-
-[Watch the MP4](docs/demo.mp4) · [Measurements](docs/performance.md) · [Read the loop](jev_ultrafast/agent.py)
+Read the loop in [agent.py](jev_ultrafast/agent.py), the atomic DOM snapshot in
+[snapshot.js](jev_ultrafast/snapshot.js), and the decision heads in
+[model.py](jev_ultrafast/model.py). No demonstration footage or measured run times
+are shipped — see [Evidence and limits](#evidence-and-limits).
 
 ## The action space
 
@@ -141,11 +140,12 @@ Every executed target is resolved from an observed node. The executor rechecks p
 
 ## Evidence and limits
 
-The current video is a **7,073 ms** Google Flights run. Timing starts after initial page observation and includes model calls, generated text, browser work, stale decisions, and loading waits. A fresh independent check verifies the one-way setting, Zürich, London, September 20, 2026, and visible flight options. The video plays at 1×, with no opening hold and a 0.5-second final hold.
-
-In six alternating runs with identical models and settings, both versions passed **3/3**. Median task time went from **9.450 s → 7.092 s**, a **25% reduction**; median browser protocol calls went from **1,092 → 101**. This is three repeats of one task on one browser profile, not a general reliability benchmark.
-
-The same policy opened the requested Wikipedia article in **2.798 s** and passed a local hotel search/filter task in **1.896 s**. Runs, failures, source hashes, and measurement boundaries are in [performance.md](docs/performance.md).
+This fork ships **no performance evidence of its own**. The upstream project published
+measured runs — a Google Flights recording, matched comparisons and task times — against
+the TypeSafe model; those results were not reproduced for the NeoHorse-Jev-4B endpoint
+and have been removed from this repository. Measure first with
+`python scripts/measure_flights.py --output <folder>` (a live run that writes its own
+evidence), and treat every speed, cost or reliability number as unknown until then.
 
 A `DONE` choice still requires independent outcome verification. The DOM reader handles common HTML and ARIA controls, not the full accessible-name specification. Shadow roots, frames, canvas, uploads, pop-up tabs, nested scrolling, and arbitrary keyboard widgets remain outside this MVP. Owned tabs share the existing Chrome profile.
 
@@ -159,7 +159,7 @@ node --check jev_ultrafast/snapshot.js
 uv build
 ```
 
-Tests are offline. `uv run python scripts/check_guards.py` checks real controls in a local browser without model calls. Live examples and recording scripts make paid API calls. `scripts/record_flights.py <new-folder>` captures original browser timestamps; `scripts/render_demo.py <recording-folder>` renders that verified run at 1× and crops out the Google account strip. Credentials and raw traces stay ignored.
+Tests are offline. `uv run python scripts/check_guards.py` checks real controls in a local browser without model calls. Live examples, `scripts/measure_flights.py` and `scripts/smoke.py` make paid API calls. Credentials and raw traces stay ignored.
 
 ---
 
