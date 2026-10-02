@@ -1,5 +1,3 @@
-<img src="docs/banner.svg" alt="Jev Ultrafast · NeoHorse × Jev-4B" width="100%" />
-
 # Jev Ultrafast ⚡
 
 > [!NOTE]
